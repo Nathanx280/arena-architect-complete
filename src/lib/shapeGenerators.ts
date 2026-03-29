@@ -97,6 +97,9 @@ export const SHAPE_PRESETS: ShapeConfig[] = [
   { name: "Bridge Arena", description: "Two platforms with a bridge", icon: "🌉", category: "arenas", centerX: 5000, centerY: 5000, centerZ: 2000, radius: 3000, step: 400 },
   { name: "King of the Hill", description: "Elevated central platform", icon: "👑", category: "arenas", centerX: 5000, centerY: 5000, centerZ: 0, radius: 2500, step: 400 },
   { name: "Four-Corner Arena", description: "4 platforms with central ring", icon: "🎯", category: "arenas", centerX: 5000, centerY: 5000, centerZ: 0, radius: 3000, step: 400 },
+  { name: "Fortress", description: "Walled fortress compound", icon: "🏰", category: "arenas", centerX: 5000, centerY: 5000, centerZ: 0, radius: 3000, step: 400 },
+  { name: "Amphitheater", description: "Half-circle tiered theater", icon: "🎭", category: "arenas", centerX: 5000, centerY: 5000, centerZ: 0, radius: 2500, step: 400 },
+  { name: "Watchtower Ring", description: "Ring of watchtowers", icon: "🔭", category: "arenas", centerX: 5000, centerY: 5000, centerZ: 0, radius: 3000, step: 350 },
 
   // --- Events ---
   { name: "Maze", description: "Centered labyrinth with entrance/exit", icon: "🌀", category: "events", centerX: 5000, centerY: 5000, centerZ: 0, radius: 5000, step: 300, difficulty: "medium", hasFloor: true, hasBorder: true },
