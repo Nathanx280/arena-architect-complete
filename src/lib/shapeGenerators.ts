@@ -373,6 +373,88 @@ function generateHexPlatform(cfg: ShapeConfig, bp: string): string[] {
   return cmds;
 }
 
+function generateCone(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const height = r * 1.5;
+  for (let z = cz; z <= cz + height; z += step) {
+    const t = (z - cz) / height;
+    const layerR = r * (1 - t);
+    if (layerR < step) { cmds.push(cmd(bp, cx, cy, z)); continue; }
+    sampleCircle(cx, cy, layerR, step, (x, y) => {
+      cmds.push(cmd(bp, x, y, z));
+    });
+  }
+  return cmds;
+}
+
+function generateCross(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const arm = r;
+  const thick = step * 3;
+  // Three axes of the cross
+  for (let d = -arm; d <= arm; d += step) {
+    for (let w = -thick; w <= thick; w += step) {
+      // X-axis arm
+      cmds.push(cmd(bp, cx + d, cy + w, cz));
+      cmds.push(cmd(bp, cx + d, cy, cz + w));
+      // Y-axis arm
+      cmds.push(cmd(bp, cx + w, cy + d, cz));
+      cmds.push(cmd(bp, cx, cy + d, cz + w));
+      // Z-axis arm
+      cmds.push(cmd(bp, cx + w, cy, cz + d));
+      cmds.push(cmd(bp, cx, cy + w, cz + d));
+    }
+  }
+  return dedupeCommands(cmds);
+}
+
+function generateSpiralRamp(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const height = r * 3;
+  const turns = 4;
+  const rampWidth = step * 4;
+  // Central pillar
+  extrudeZ(cz, height, step, (z) => { cmds.push(cmd(bp, cx, cy, z)); });
+  // Ramp surface
+  const totalSteps = turns * 30;
+  for (let i = 0; i <= totalSteps; i++) {
+    const t = i / totalSteps;
+    const angle = t * turns * Math.PI * 2;
+    const z = cz + t * height;
+    for (let w = step; w <= rampWidth; w += step) {
+      const px = cx + Math.cos(angle) * w;
+      const py = cy + Math.sin(angle) * w;
+      cmds.push(cmd(bp, px, py, z));
+    }
+    // Outer railing
+    const rx = cx + Math.cos(angle) * (rampWidth + step);
+    const ry = cy + Math.sin(angle) * (rampWidth + step);
+    cmds.push(cmd(bp, rx, ry, z + step));
+  }
+  return cmds;
+}
+
+function generateObelisk(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const height = r * 5;
+  for (let z = cz; z <= cz + height; z += step) {
+    const t = (z - cz) / height;
+    const halfW = r * (1 - t * 0.7);
+    const halfD = halfW * 0.5;
+    // Only edges for hollow obelisk
+    rectEdges(cx, cy, halfW, halfD, step, (x, y) => {
+      cmds.push(cmd(bp, x, y, z));
+    });
+  }
+  // Capstone
+  cmds.push(cmd(bp, cx, cy, cz + height));
+  return cmds;
+}
+
 // ============================================================
 // ARENA GENERATORS (REBUILT)
 // ============================================================
