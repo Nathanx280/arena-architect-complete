@@ -81,6 +81,10 @@ export const SHAPE_PRESETS: ShapeConfig[] = [
   { name: "Arch", description: "Standing arch gateway", icon: "🚪", category: "shapes", centerX: 5000, centerY: 5000, centerZ: 0, radius: 2000, step: 350 },
   { name: "Tunnel", description: "Long semicircle tunnel", icon: "🕳️", category: "shapes", centerX: 5000, centerY: 5000, centerZ: 0, radius: 1500, step: 350 },
   { name: "Hex Platform", description: "Flat hexagonal platform", icon: "⬡", category: "shapes", centerX: 5000, centerY: 5000, centerZ: 500, radius: 2000, step: 350 },
+  { name: "Cone", description: "Solid cone rising on Z", icon: "🔼", category: "shapes", centerX: 5000, centerY: 5000, centerZ: 0, radius: 2000, step: 400 },
+  { name: "Cross", description: "3D cross / plus shape", icon: "✚", category: "shapes", centerX: 5000, centerY: 5000, centerZ: 3000, radius: 2000, step: 400 },
+  { name: "Spiral Ramp", description: "Drivable spiral ramp", icon: "🌀", category: "shapes", centerX: 5000, centerY: 5000, centerZ: 0, radius: 2000, step: 350 },
+  { name: "Obelisk", description: "Tapered obelisk monument", icon: "🗿", category: "shapes", centerX: 5000, centerY: 5000, centerZ: 0, radius: 1000, step: 300 },
 
   // --- Arenas ---
   { name: "Colosseum", description: "Stepped bowl arena with gates", icon: "🏟️", category: "arenas", centerX: 5000, centerY: 5000, centerZ: 0, radius: 3000, step: 400, gateCount: 4 },
