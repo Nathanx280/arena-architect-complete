@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -6,12 +6,18 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Copy, Download, Grid3X3, Zap, RefreshCw, Save, FolderOpen, Shuffle, Trash2, FileText, MapPin } from "lucide-react";
+import { Copy, Download, Grid3X3, Zap, RefreshCw, Save, FolderOpen, Shuffle, Trash2, MapPin, Eye, EyeOff, ChevronDown, ChevronUp, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 import { SHAPE_PRESETS, generateShape, ShapeConfig, ShapeCategory } from "@/lib/shapeGenerators";
 import { computeFootprint, WARN_THRESHOLD, MAX_COMMANDS } from "@/lib/generatorHelpers";
 import AxisInspector from "@/components/AxisInspector";
 import CommandWarnings from "@/components/CommandWarnings";
+import BlueprintLibrary from "@/components/BlueprintLibrary";
+import CommandStats from "@/components/CommandStats";
+import ShareConfig, { decodeConfig } from "@/components/ShareConfig";
+import KeyboardShortcuts from "@/components/KeyboardShortcuts";
+
+const Preview3D = lazy(() => import("@/components/Preview3D"));
 
 const DEFAULT_BLUEPRINT =
   '"Blueprint\'/Game/PrimalEarth/Structures/TributeTerminal_Base.TributeTerminal_Base\'"';
@@ -101,10 +107,42 @@ const Index = () => {
   const [teleportY, setTeleportY] = useState(5000);
   const [teleportZ, setTeleportZ] = useState(3000);
   const [customFileName, setCustomFileName] = useState("");
+  
+  // UI state
+  const [show3D, setShow3D] = useState(true);
+  const [showBPLibrary, setShowBPLibrary] = useState(false);
+  const [showStats, setShowStats] = useState(true);
+  const [showPreview, setShowPreview] = useState(true);
+  const [copiedChunks, setCopiedChunks] = useState<Set<number>>(new Set());
+
   // Presets
   const [presetName, setPresetName] = useState("");
   const [savedPresets, setSavedPresets] = useState(loadPresets);
   const [recentBuilds, setRecentBuilds] = useState(getRecentBuilds);
+
+  // Load config from URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const configStr = params.get("config");
+    if (configStr) {
+      const cfg = decodeConfig(configStr);
+      if (cfg) {
+        if (cfg.activeShapeName) {
+          const found = SHAPE_PRESETS.find(s => s.name === cfg.activeShapeName);
+          if (found) { setActiveShape(found); setShapeCategory(found.category); }
+        }
+        if (typeof cfg.shapeCenterX === "number") setShapeCenterX(cfg.shapeCenterX);
+        if (typeof cfg.shapeCenterY === "number") setShapeCenterY(cfg.shapeCenterY);
+        if (typeof cfg.shapeCenterZ === "number") setShapeCenterZ(cfg.shapeCenterZ);
+        if (typeof cfg.shapeRadius === "number") setShapeRadius(cfg.shapeRadius);
+        if (typeof cfg.shapeStep === "number") setShapeStep(cfg.shapeStep);
+        if (typeof cfg.blueprint === "string") setBlueprint(cfg.blueprint);
+        toast.success("Config loaded from shared link!");
+        // Clean URL
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    }
+  }, []);
 
   // Build current config
   const currentConfig = useMemo((): ShapeConfig => ({
@@ -158,10 +196,8 @@ const Index = () => {
         }
       }
     } else {
-      // Walls: grid edges extruded upward along Z
       for (let x = 0; x <= maxX; x += xStep) {
         for (let y = 0; y <= maxY; y += yStep) {
-          // Only place on grid lines (edges of each cell)
           const onXEdge = x % xStep === 0;
           const onYEdge = y % yStep === 0;
           if (onXEdge || onYEdge) {
@@ -186,18 +222,20 @@ const Index = () => {
     return copyMode === "singleline" ? cmds.join("") : cmds.join("\n");
   }, [copyMode]);
 
-  const copyAll = () => {
+  const copyAll = useCallback(() => {
     navigator.clipboard.writeText(formatCommands(commands));
     toast.success(`Copied ${totalCommands} commands`);
     addRecentBuild(mode === "shape" ? activeShape.name : "Flat Grid", totalCommands);
     setRecentBuilds(getRecentBuilds());
-  };
+    setCopiedChunks(new Set());
+  }, [commands, formatCommands, totalCommands, mode, activeShape.name]);
 
   const copyChunk = (index: number) => {
     const start = index * chunkSize;
     const chunk = commands.slice(start, start + chunkSize);
     navigator.clipboard.writeText(formatCommands(chunk));
     toast.success(`Copied chunk ${index + 1} (${chunk.length} cmds)`);
+    setCopiedChunks(prev => new Set([...prev, index]));
   };
 
   const buildFileContent = useCallback(() => {
@@ -209,7 +247,7 @@ const Index = () => {
     return lines.join("\n") + "\n";
   }, [commands, includeTeleport, teleportX, teleportY, teleportZ]);
 
-  const downloadFile = () => {
+  const downloadFile = useCallback(() => {
     const defaultLabel = mode === "shape" ? activeShape.name.toLowerCase().replace(/\s+/g, "_") : `${maxX}x${maxY}`;
     const fileName = customFileName.trim() ? customFileName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, "").replace(/\s+/g, "_") : `ark_tribute_${defaultLabel}`;
     const blob = new Blob([buildFileContent()], { type: "text/plain" });
@@ -222,15 +260,15 @@ const Index = () => {
     toast.success(`Downloaded ${fileName}.txt`);
     addRecentBuild(mode === "shape" ? activeShape.name : "Flat Grid", totalCommands);
     setRecentBuilds(getRecentBuilds());
-  };
+  }, [mode, activeShape.name, maxX, maxY, customFileName, buildFileContent, totalCommands]);
 
-  const handleSavePreset = () => {
+  const handleSavePreset = useCallback(() => {
     if (!presetName.trim()) { toast.error("Enter a preset name"); return; }
     savePreset(presetName, { mode, activeShapeName: activeShape.name, shapeCenterX, shapeCenterY, shapeCenterZ, shapeRadius, shapeStep, blueprint });
     setSavedPresets(loadPresets());
     toast.success(`Preset "${presetName}" saved`);
     setPresetName("");
-  };
+  }, [presetName, mode, activeShape.name, shapeCenterX, shapeCenterY, shapeCenterZ, shapeRadius, shapeStep, blueprint]);
 
   const handleLoadPreset = (name: string) => {
     const p = savedPresets[name] as Record<string, unknown>;
@@ -249,7 +287,7 @@ const Index = () => {
     toast.success(`Loaded preset "${name}"`);
   };
 
-  const handleRandomizeEvent = () => {
+  const handleRandomizeEvent = useCallback(() => {
     const events = SHAPE_PRESETS.filter(s => s.category === "events");
     const pick = events[Math.floor(Math.random() * events.length)];
     setActiveShape(pick);
@@ -261,7 +299,7 @@ const Index = () => {
     setShapeRadius(pick.radius);
     setShapeStep(pick.step);
     toast.success(`Random event: ${pick.name}`);
-  };
+  }, []);
 
   const handleShapeSelect = (s: ShapeConfig) => {
     setActiveShape(s);
@@ -270,7 +308,17 @@ const Index = () => {
     setShapeCenterZ(s.centerZ);
     setShapeRadius(s.radius);
     setShapeStep(s.step);
+    setCopiedChunks(new Set());
   };
+
+  const shareConfig = useMemo(() => ({
+    activeShapeName: activeShape.name,
+    shapeCenterX, shapeCenterY, shapeCenterZ,
+    shapeRadius, shapeStep, blueprint,
+  }), [activeShape.name, shapeCenterX, shapeCenterY, shapeCenterZ, shapeRadius, shapeStep, blueprint]);
+
+  // Chunk progress
+  const chunkProgress = totalChunks > 0 ? (copiedChunks.size / totalChunks) * 100 : 0;
 
   // Render shape-specific options
   const renderShapeOptions = () => {
@@ -308,7 +356,7 @@ const Index = () => {
       );
     }
 
-    if (name === "Obstacle Course") {
+    if (name === "Obstacle Course" || name === "Gauntlet") {
       return (
         <div className="space-y-3">
           <div>
@@ -409,20 +457,33 @@ const Index = () => {
       );
     }
 
+    if (name === "Lava Run" || name === "Parkour Tower" || name === "Dropper Tower") {
+      return (
+        <div className="space-y-3">
+          <Button variant="outline" onClick={() => setMazeSeed(Date.now())} className="w-full gap-2 font-display tracking-wide text-xs">
+            <RefreshCw className="w-3 h-3" /> Regenerate Layout
+          </Button>
+          <Field label="Seed" value={mazeSeed} onChange={setMazeSeed} />
+        </div>
+      );
+    }
+
     return null;
   };
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container max-w-7xl py-4 flex items-center justify-between">
+      {/* Animated Header */}
+      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-neon-cyan/5 pointer-events-none" />
+        <div className="container max-w-7xl py-4 flex items-center justify-between relative">
           <div>
-            <h1 className="font-display text-2xl tracking-widest text-primary text-glow-green">
-              ARK GRID BUILDER
+            <h1 className="font-display text-2xl md:text-3xl tracking-widest text-primary text-glow-green flex items-center gap-3">
+              <span className="text-3xl animate-pulse-glow">⚡</span>
+              ARK ARENA ARCHITECT
             </h1>
             <p className="text-xs text-muted-foreground mt-1">
-              Tribute terminal spawn commands · X+Y = ground · Z = height
+              Build insane structures · {SHAPE_PRESETS.length} presets · X+Y = ground · Z = height
             </p>
           </div>
           <div className="flex gap-2">
@@ -432,7 +493,7 @@ const Index = () => {
               onClick={() => setMode("grid")}
               className="gap-2 font-display tracking-wide text-xs"
             >
-              <Grid3X3 className="w-3 h-3" /> Flat Grid
+              <Grid3X3 className="w-3 h-3" /> Grid
             </Button>
             <Button
               variant={mode === "shape" ? "default" : "outline"}
@@ -440,7 +501,7 @@ const Index = () => {
               onClick={() => setMode("shape")}
               className="gap-2 font-display tracking-wide text-xs"
             >
-              <Zap className="w-3 h-3" /> 3D Structures
+              <Zap className="w-3 h-3" /> Structures
             </Button>
           </div>
         </div>
@@ -463,7 +524,7 @@ const Index = () => {
                   </Tabs>
 
                   {/* Shape picker grid */}
-                  <div className="grid grid-cols-3 gap-2 mt-3">
+                  <div className="grid grid-cols-3 gap-2 mt-3 max-h-64 overflow-y-auto pr-1">
                     {SHAPE_PRESETS.filter((s) => s.category === shapeCategory).map((s) => (
                       <button
                         key={s.name}
@@ -501,8 +562,8 @@ const Index = () => {
                     <Field label="Radius" value={shapeRadius} onChange={setShapeRadius} min={100} />
                     <Field label="Step" value={shapeStep} onChange={setShapeStep} min={100} />
                   </div>
-                  <Button variant="outline" size="sm" className="w-full text-[10px] font-display gap-1 mt-1" onClick={() => { setTeleportX(shapeCenterX); setTeleportY(shapeCenterY); setTeleportZ(shapeCenterZ); setIncludeTeleport(true); toast.success("Teleport synced — you'll spawn right at the structure"); }}>
-                    <MapPin className="w-3 h-3" /> Spawn At My Position (sync teleport)
+                  <Button variant="outline" size="sm" className="w-full text-[10px] font-display gap-1 mt-1" onClick={() => { setTeleportX(shapeCenterX); setTeleportY(shapeCenterY); setTeleportZ(shapeCenterZ); setIncludeTeleport(true); toast.success("Teleport synced"); }}>
+                    <MapPin className="w-3 h-3" /> Sync Teleport to Structure
                   </Button>
                 </div>
 
@@ -549,13 +610,28 @@ const Index = () => {
               </>
             )}
 
-            {/* Blueprint + Chunk settings */}
+            {/* Blueprint Library */}
+            <div className="card-ark p-4 space-y-3">
+              <button
+                onClick={() => setShowBPLibrary(!showBPLibrary)}
+                className="flex items-center justify-between w-full"
+              >
+                <h3 className="font-display text-xs tracking-widest text-muted-foreground uppercase">Blueprint Library</h3>
+                {showBPLibrary ? <ChevronUp className="w-3 h-3 text-muted-foreground" /> : <ChevronDown className="w-3 h-3 text-muted-foreground" />}
+              </button>
+              {showBPLibrary ? (
+                <BlueprintLibrary value={blueprint} onChange={setBlueprint} />
+              ) : (
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">Blueprint Path</Label>
+                  <Input value={blueprint} onChange={(e) => setBlueprint(e.target.value)} className="bg-muted border-border text-foreground font-mono text-[10px] mt-0.5" />
+                </div>
+              )}
+            </div>
+
+            {/* Output Settings */}
             <div className="card-ark p-4 space-y-3">
               <h3 className="font-display text-xs tracking-widest text-muted-foreground uppercase">Output Settings</h3>
-              <div>
-                <Label className="text-xs text-muted-foreground">Blueprint Path</Label>
-                <Input value={blueprint} onChange={(e) => setBlueprint(e.target.value)} className="bg-muted border-border text-foreground font-mono text-xs mt-1" />
-              </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Chunk Size</Label>
                 <div className="flex gap-1 mt-1">
@@ -570,10 +646,10 @@ const Index = () => {
                 <Label className="text-xs text-muted-foreground">Copy Mode</Label>
                 <div className="flex gap-1">
                   <Button variant={copyMode === "multiline" ? "default" : "outline"} size="sm" onClick={() => setCopyMode("multiline")} className="text-[10px] font-display">
-                    Multi-line
+                    Multi
                   </Button>
                   <Button variant={copyMode === "singleline" ? "default" : "outline"} size="sm" onClick={() => setCopyMode("singleline")} className="text-[10px] font-display">
-                    Single-line
+                    Single
                   </Button>
                 </div>
               </div>
@@ -584,7 +660,6 @@ const Index = () => {
               <h3 className="font-display text-xs tracking-widest text-muted-foreground uppercase flex items-center gap-1.5">
                 <MapPin className="w-3 h-3" /> Teleport & Download
               </h3>
-              <p className="text-[10px] text-muted-foreground">Include a teleport command at the top of the file so you land exactly where you need to be before spawning.</p>
               <ToggleOption label="Include Teleport Command" checked={includeTeleport} onChange={setIncludeTeleport} />
               {includeTeleport && (
                 <div className="grid grid-cols-3 gap-2">
@@ -593,19 +668,19 @@ const Index = () => {
                   <Field label="TP Z" value={teleportZ} onChange={setTeleportZ} />
                 </div>
               )}
-              {includeTeleport && mode === "shape" && (
-                <Button variant="outline" size="sm" className="w-full text-[10px] font-display gap-1" onClick={() => { setTeleportX(shapeCenterX); setTeleportY(shapeCenterY); setTeleportZ(shapeCenterZ); toast.success("Teleport set to structure center"); }}>
-                  <MapPin className="w-3 h-3" /> Use Structure Center
-                </Button>
-              )}
               <div>
                 <Label className="text-[10px] text-muted-foreground">File Name</Label>
                 <Input placeholder="e.g. ice_cave_island" value={customFileName} onChange={(e) => setCustomFileName(e.target.value)} className="bg-muted border-border text-foreground text-xs mt-0.5" />
-                <p className="text-[10px] text-muted-foreground mt-0.5">.txt added automatically</p>
               </div>
             </div>
 
-            {/* Save/Load Presets */}
+            {/* Share */}
+            <div className="card-ark p-4 space-y-3">
+              <h3 className="font-display text-xs tracking-widest text-muted-foreground uppercase">Share & Export</h3>
+              <ShareConfig config={shareConfig} />
+            </div>
+
+            {/* Presets */}
             <div className="card-ark p-4 space-y-3">
               <h3 className="font-display text-xs tracking-widest text-muted-foreground uppercase">Presets</h3>
               <div className="flex gap-2">
@@ -613,7 +688,7 @@ const Index = () => {
                 <Button variant="outline" size="sm" onClick={handleSavePreset}><Save className="w-3 h-3" /></Button>
               </div>
               {Object.keys(savedPresets).length > 0 && (
-                <div className="space-y-1">
+                <div className="space-y-1 max-h-32 overflow-y-auto">
                   {Object.entries(savedPresets).map(([name]) => (
                     <div key={name} className="flex items-center justify-between bg-secondary/30 rounded px-2 py-1">
                       <button onClick={() => handleLoadPreset(name)} className="text-xs text-foreground hover:text-primary flex items-center gap-1">
@@ -634,62 +709,100 @@ const Index = () => {
             {/* Warnings */}
             <CommandWarnings count={totalCommands} />
 
-            {/* Stats bar */}
+            {/* 3D Preview */}
             <div className="card-ark p-4">
-              <div className="flex flex-wrap gap-4 items-center">
-                {mode === "grid" ? (
-                  <>
-                    <Stat label="Grid" value={`${Math.floor(maxX / xStep + 1)} × ${Math.floor(maxY / yStep + 1)}`} />
-                    <Stat label="Height (Z)" value={gridZ.toLocaleString()} />
-                  </>
-                ) : (
-                  <>
-                    <Stat label="Structure" value={activeShape.name} />
-                    <Stat label="Footprint" value={`${footprint.width.toLocaleString()} × ${footprint.depth.toLocaleString()} × ${footprint.height.toLocaleString()}`} />
-                  </>
-                )}
-                <Stat label="Commands" value={totalCommands.toLocaleString()} highlight={totalCommands > WARN_THRESHOLD} />
-                <Stat label="Chunks" value={totalChunks.toString()} />
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-display text-sm tracking-widest text-muted-foreground uppercase flex items-center gap-2">
+                  <span className="text-primary">◆</span> 3D Preview
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setShow3D(!show3D)} className="text-[10px] gap-1">
+                  {show3D ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                  {show3D ? "Hide" : "Show"}
+                </Button>
               </div>
+              {show3D && (
+                <Suspense fallback={<div className="w-full h-72 bg-secondary/30 rounded-lg flex items-center justify-center"><span className="text-xs text-muted-foreground font-display animate-pulse">Loading 3D engine...</span></div>}>
+                  <Preview3D commands={commands} maxPoints={8000} />
+                </Suspense>
+              )}
+            </div>
+
+            {/* Stats */}
+            <div className="card-ark p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-display text-sm tracking-widest text-muted-foreground uppercase flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-neon-cyan" /> Statistics
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowStats(!showStats)} className="text-[10px] gap-1">
+                  {showStats ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </Button>
+              </div>
+              {showStats && <CommandStats commands={commands} footprint={footprint} chunkSize={chunkSize} />}
             </div>
 
             {/* Actions */}
             <div className="flex gap-2">
-              <Button onClick={copyAll} className="gap-2 font-display tracking-wide flex-1">
-                <Copy className="w-4 h-4" /> Copy All
+              <Button onClick={copyAll} className="gap-2 font-display tracking-wide flex-1 glow-primary">
+                <Copy className="w-4 h-4" /> Copy All ({totalCommands.toLocaleString()})
               </Button>
               <Button variant="outline" onClick={downloadFile} className="gap-2 font-display tracking-wide">
                 <Download className="w-4 h-4" /> Download .txt
               </Button>
             </div>
 
-            {/* Chunks */}
-            <div className="card-ark p-4">
-              <h3 className="font-display text-sm tracking-widest text-muted-foreground uppercase mb-3">Copy by Chunk</h3>
-              <p className="text-xs text-muted-foreground mb-3">Paste chunks individually into ARK console to avoid overflow.</p>
-              <div className="flex flex-wrap gap-1.5">
-                {Array.from({ length: Math.min(totalChunks, 100) }, (_, i) => {
-                  const start = i * chunkSize;
-                  const end = Math.min(start + chunkSize, totalCommands);
-                  return (
-                    <Button key={i} variant="outline" size="sm" onClick={() => copyChunk(i)} className="text-[10px] font-body px-2 py-1">
-                      {start + 1}–{end}
-                    </Button>
-                  );
-                })}
-                {totalChunks > 100 && (
-                  <span className="text-xs text-muted-foreground self-center">...{totalChunks - 100} more chunks</span>
-                )}
+            {/* Chunk Progress Bar */}
+            {totalChunks > 1 && (
+              <div className="card-ark p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-display text-sm tracking-widest text-muted-foreground uppercase">Paste Progress</h3>
+                  <span className="text-xs text-muted-foreground font-display">
+                    {copiedChunks.size}/{totalChunks} chunks · {Math.round(chunkProgress)}%
+                  </span>
+                </div>
+                <div className="w-full bg-secondary/50 rounded-full h-2 mb-3 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-primary to-neon-cyan rounded-full transition-all duration-300"
+                    style={{ width: `${chunkProgress}%` }}
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {Array.from({ length: Math.min(totalChunks, 100) }, (_, i) => {
+                    const start = i * chunkSize;
+                    const end = Math.min(start + chunkSize, totalCommands);
+                    const isCopied = copiedChunks.has(i);
+                    return (
+                      <Button
+                        key={i}
+                        variant={isCopied ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => copyChunk(i)}
+                        className={`text-[10px] font-body px-2 py-1 ${isCopied ? "bg-primary/20 border-primary text-primary" : ""}`}
+                      >
+                        {isCopied ? "✓" : ""} {start + 1}–{end}
+                      </Button>
+                    );
+                  })}
+                  {totalChunks > 100 && (
+                    <span className="text-xs text-muted-foreground self-center">...{totalChunks - 100} more</span>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Preview */}
+            {/* Command Preview */}
             <div className="card-ark p-4">
-              <h3 className="font-display text-sm tracking-widest text-muted-foreground uppercase mb-3">Preview (first 10)</h3>
-              <pre className="bg-secondary/30 rounded p-3 text-xs font-mono text-foreground/80 overflow-x-auto whitespace-pre-wrap break-all">
-                {commands.slice(0, 10).join("\n")}
-                {totalCommands > 10 && `\n... and ${totalCommands - 10} more`}
-              </pre>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-display text-sm tracking-widest text-muted-foreground uppercase">Command Preview</h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowPreview(!showPreview)} className="text-[10px] gap-1">
+                  {showPreview ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </Button>
+              </div>
+              {showPreview && (
+                <pre className="bg-secondary/30 rounded p-3 text-xs font-mono text-foreground/80 overflow-x-auto whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                  {commands.slice(0, 15).join("\n")}
+                  {totalCommands > 15 && `\n... and ${totalCommands - 15} more`}
+                </pre>
+              )}
             </div>
 
             {/* Recent Builds */}
@@ -707,19 +820,28 @@ const Index = () => {
               </div>
             )}
 
-            {/* Help text */}
+            {/* Help */}
             <div className="card-ark p-4">
               <h3 className="font-display text-sm tracking-widest text-muted-foreground uppercase mb-2">How ARK Coordinates Work</h3>
               <div className="text-xs text-muted-foreground space-y-1.5">
-                <p><strong className="text-neon-cyan">X</strong> = horizontal (left/right) · <strong className="text-neon-orange">Y</strong> = horizontal (forward/back) · <strong className="text-primary">Z</strong> = vertical (height)</p>
+                <p><strong className="text-neon-cyan">X</strong> = horizontal (left/right) · <strong className="text-accent">Y</strong> = horizontal (forward/back) · <strong className="text-primary">Z</strong> = vertical (height)</p>
                 <p>The <strong>ground plane</strong> is always X + Y. Height is always Z. All structures are centered around the specified center point.</p>
                 <p>Use <strong>Step</strong> to control density — smaller step = more commands but finer detail. Use <strong>Radius</strong> to control overall size.</p>
-                <p>When pasting into the ARK console, paste one chunk at a time. Each command ends with <code className="text-foreground">|</code> as a delimiter.</p>
+                <p>Press <kbd className="bg-secondary text-foreground px-1 rounded text-[10px] font-mono">?</kbd> for keyboard shortcuts.</p>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Keyboard Shortcuts */}
+      <KeyboardShortcuts
+        onCopyAll={copyAll}
+        onDownload={downloadFile}
+        onSavePreset={handleSavePreset}
+        onRandomize={handleRandomizeEvent}
+        onSetMode={setMode}
+      />
     </div>
   );
 };

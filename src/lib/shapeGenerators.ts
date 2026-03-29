@@ -81,6 +81,10 @@ export const SHAPE_PRESETS: ShapeConfig[] = [
   { name: "Arch", description: "Standing arch gateway", icon: "🚪", category: "shapes", centerX: 5000, centerY: 5000, centerZ: 0, radius: 2000, step: 350 },
   { name: "Tunnel", description: "Long semicircle tunnel", icon: "🕳️", category: "shapes", centerX: 5000, centerY: 5000, centerZ: 0, radius: 1500, step: 350 },
   { name: "Hex Platform", description: "Flat hexagonal platform", icon: "⬡", category: "shapes", centerX: 5000, centerY: 5000, centerZ: 500, radius: 2000, step: 350 },
+  { name: "Cone", description: "Solid cone rising on Z", icon: "🔼", category: "shapes", centerX: 5000, centerY: 5000, centerZ: 0, radius: 2000, step: 400 },
+  { name: "Cross", description: "3D cross / plus shape", icon: "✚", category: "shapes", centerX: 5000, centerY: 5000, centerZ: 3000, radius: 2000, step: 400 },
+  { name: "Spiral Ramp", description: "Drivable spiral ramp", icon: "🌀", category: "shapes", centerX: 5000, centerY: 5000, centerZ: 0, radius: 2000, step: 350 },
+  { name: "Obelisk", description: "Tapered obelisk monument", icon: "🗿", category: "shapes", centerX: 5000, centerY: 5000, centerZ: 0, radius: 1000, step: 300 },
 
   // --- Arenas ---
   { name: "Colosseum", description: "Stepped bowl arena with gates", icon: "🏟️", category: "arenas", centerX: 5000, centerY: 5000, centerZ: 0, radius: 3000, step: 400, gateCount: 4 },
@@ -93,6 +97,9 @@ export const SHAPE_PRESETS: ShapeConfig[] = [
   { name: "Bridge Arena", description: "Two platforms with a bridge", icon: "🌉", category: "arenas", centerX: 5000, centerY: 5000, centerZ: 2000, radius: 3000, step: 400 },
   { name: "King of the Hill", description: "Elevated central platform", icon: "👑", category: "arenas", centerX: 5000, centerY: 5000, centerZ: 0, radius: 2500, step: 400 },
   { name: "Four-Corner Arena", description: "4 platforms with central ring", icon: "🎯", category: "arenas", centerX: 5000, centerY: 5000, centerZ: 0, radius: 3000, step: 400 },
+  { name: "Fortress", description: "Walled fortress compound", icon: "🏰", category: "arenas", centerX: 5000, centerY: 5000, centerZ: 0, radius: 3000, step: 400 },
+  { name: "Amphitheater", description: "Half-circle tiered theater", icon: "🎭", category: "arenas", centerX: 5000, centerY: 5000, centerZ: 0, radius: 2500, step: 400 },
+  { name: "Watchtower Ring", description: "Ring of watchtowers", icon: "🔭", category: "arenas", centerX: 5000, centerY: 5000, centerZ: 0, radius: 3000, step: 350 },
 
   // --- Events ---
   { name: "Maze", description: "Centered labyrinth with entrance/exit", icon: "🌀", category: "events", centerX: 5000, centerY: 5000, centerZ: 0, radius: 5000, step: 300, difficulty: "medium", hasFloor: true, hasBorder: true },
@@ -106,6 +113,8 @@ export const SHAPE_PRESETS: ShapeConfig[] = [
   { name: "Capture Point Arena", description: "3-point control map", icon: "🚩", category: "events", centerX: 5000, centerY: 5000, centerZ: 0, radius: 3000, step: 400 },
   { name: "Boss Summon Platform", description: "Ritual summoning platform", icon: "🐉", category: "events", centerX: 5000, centerY: 5000, centerZ: 0, radius: 2000, step: 350 },
   { name: "Last Man Standing", description: "Shrinking circle arena", icon: "⭕", category: "events", centerX: 5000, centerY: 5000, centerZ: 0, radius: 3000, step: 400 },
+  { name: "Gauntlet", description: "Linear gauntlet challenge run", icon: "🗡️", category: "events", centerX: 5000, centerY: 5000, centerZ: 0, radius: 4000, step: 400 },
+  { name: "Lava Run", description: "Floating platforms over void", icon: "🌋", category: "events", centerX: 5000, centerY: 5000, centerZ: 3000, radius: 3000, step: 350 },
 ];
 
 // ============================================================
@@ -361,6 +370,88 @@ function generateHexPlatform(cfg: ShapeConfig, bp: string): string[] {
         cmds.push(cmd(bp, x, y, z));
     }
   }
+  return cmds;
+}
+
+function generateCone(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const height = r * 1.5;
+  for (let z = cz; z <= cz + height; z += step) {
+    const t = (z - cz) / height;
+    const layerR = r * (1 - t);
+    if (layerR < step) { cmds.push(cmd(bp, cx, cy, z)); continue; }
+    sampleCircle(cx, cy, layerR, step, (x, y) => {
+      cmds.push(cmd(bp, x, y, z));
+    });
+  }
+  return cmds;
+}
+
+function generateCross(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const arm = r;
+  const thick = step * 3;
+  // Three axes of the cross
+  for (let d = -arm; d <= arm; d += step) {
+    for (let w = -thick; w <= thick; w += step) {
+      // X-axis arm
+      cmds.push(cmd(bp, cx + d, cy + w, cz));
+      cmds.push(cmd(bp, cx + d, cy, cz + w));
+      // Y-axis arm
+      cmds.push(cmd(bp, cx + w, cy + d, cz));
+      cmds.push(cmd(bp, cx, cy + d, cz + w));
+      // Z-axis arm
+      cmds.push(cmd(bp, cx + w, cy, cz + d));
+      cmds.push(cmd(bp, cx, cy + w, cz + d));
+    }
+  }
+  return dedupeCommands(cmds);
+}
+
+function generateSpiralRamp(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const height = r * 3;
+  const turns = 4;
+  const rampWidth = step * 4;
+  // Central pillar
+  extrudeZ(cz, height, step, (z) => { cmds.push(cmd(bp, cx, cy, z)); });
+  // Ramp surface
+  const totalSteps = turns * 30;
+  for (let i = 0; i <= totalSteps; i++) {
+    const t = i / totalSteps;
+    const angle = t * turns * Math.PI * 2;
+    const z = cz + t * height;
+    for (let w = step; w <= rampWidth; w += step) {
+      const px = cx + Math.cos(angle) * w;
+      const py = cy + Math.sin(angle) * w;
+      cmds.push(cmd(bp, px, py, z));
+    }
+    // Outer railing
+    const rx = cx + Math.cos(angle) * (rampWidth + step);
+    const ry = cy + Math.sin(angle) * (rampWidth + step);
+    cmds.push(cmd(bp, rx, ry, z + step));
+  }
+  return cmds;
+}
+
+function generateObelisk(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const height = r * 5;
+  for (let z = cz; z <= cz + height; z += step) {
+    const t = (z - cz) / height;
+    const halfW = r * (1 - t * 0.7);
+    const halfD = halfW * 0.5;
+    // Only edges for hollow obelisk
+    rectEdges(cx, cy, halfW, halfD, step, (x, y) => {
+      cmds.push(cmd(bp, x, y, z));
+    });
+  }
+  // Capstone
+  cmds.push(cmd(bp, cx, cy, cz + height));
   return cmds;
 }
 
@@ -1264,6 +1355,165 @@ function generateLastManStanding(cfg: ShapeConfig, bp: string): string[] {
   return cmds;
 }
 
+function generateFortress(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const wallH = step * 6;
+  const halfW = r, halfD = r * 0.8;
+  // Outer walls
+  rectEdges(cx, cy, halfW, halfD, step, (x, y) => {
+    extrudeZ(cz, wallH, step, (z) => { cmds.push(cmd(bp, x, y, z)); });
+  });
+  // Corner towers (cylindrical)
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      const tx = cx + sx * halfW;
+      const ty = cy + sy * halfD;
+      const towerR = step * 2;
+      circleWall(tx, ty, towerR, cz, wallH + step * 3, step, bp, cmds);
+      circleFloor(tx, ty, towerR, cz + wallH + step * 3, step, bp, cmds);
+    }
+  }
+  // Floor
+  centeredRect(cx, cy, halfW, halfD, step, (x, y) => { cmds.push(cmd(bp, x, y, cz)); });
+  // Gate (front opening marker)
+  for (let z = cz; z <= cz + wallH * 0.7; z += step) {
+    cmds.push(cmd(bp, cx - step, cy - halfD, z));
+    cmds.push(cmd(bp, cx + step, cy - halfD, z));
+  }
+  // Inner keep
+  const keepR = r * 0.25;
+  circleWall(cx, cy, keepR, cz, wallH * 0.8, step, bp, cmds);
+  circleFloor(cx, cy, keepR, cz, step, bp, cmds);
+  return cmds;
+}
+
+function generateAmphitheater(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const tiers = 5;
+  const tierH = step * 2;
+  // Half-circle seating tiers
+  for (let t = 0; t < tiers; t++) {
+    const tierR = r * 0.5 + t * step * 3;
+    const tierZ = cz + t * tierH;
+    for (let angle = 0; angle <= Math.PI; angle += step / tierR) {
+      const x = cx + Math.cos(angle) * tierR;
+      const y = cy + Math.sin(angle) * tierR;
+      cmds.push(cmd(bp, x, y, tierZ));
+      // Back wall
+      if (t === tiers - 1) {
+        for (let z = tierZ; z <= tierZ + step * 3; z += step)
+          cmds.push(cmd(bp, x, y, z));
+      }
+    }
+  }
+  // Stage floor
+  circleFloor(cx, cy, r * 0.4, cz, step, bp, cmds);
+  // Stage back wall (flat side)
+  for (let x = cx - r * 0.4; x <= cx + r * 0.4; x += step) {
+    extrudeZ(cz, step * 5, step, (z) => { cmds.push(cmd(bp, x, cy, z)); });
+  }
+  return cmds;
+}
+
+function generateWatchtowerRing(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const towerCount = 6;
+  const towerR = step * 2;
+  const towerH = step * 10;
+  // Central platform
+  circleFloor(cx, cy, r * 0.3, cz, step, bp, cmds);
+  // Ring of towers
+  for (let i = 0; i < towerCount; i++) {
+    const angle = (i * Math.PI * 2) / towerCount;
+    const tx = cx + Math.cos(angle) * r;
+    const ty = cy + Math.sin(angle) * r;
+    // Tower body
+    circleWall(tx, ty, towerR, cz, towerH, step, bp, cmds);
+    // Tower floor at top
+    circleFloor(tx, ty, towerR, cz + towerH, step, bp, cmds);
+    // Connecting walkway to center
+    rampSegment(cx + Math.cos(angle) * r * 0.3, cy + Math.sin(angle) * r * 0.3, cz,
+                tx, ty, cz, step, step, bp, cmds);
+  }
+  return cmds;
+}
+
+function generateGauntlet(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: length, step } = cfg;
+  const cmds: string[] = [];
+  const rand = seededRandom(cfg.seed ?? 55);
+  const corridorW = step * 4;
+  const wallH = step * 4;
+  const segments = 10;
+  // Long corridor
+  for (let i = 0; i < segments; i++) {
+    const t = i / segments;
+    const sx = cx - length / 2 + t * length;
+    const segLen = length / segments;
+    // Floor
+    rectPlatform(sx + segLen / 2, cy, segLen / 2, corridorW, cz, step, bp, cmds);
+    // Walls
+    for (let x = sx; x <= sx + segLen; x += step) {
+      extrudeZ(cz, wallH, step, (z) => {
+        cmds.push(cmd(bp, x, cy - corridorW, z));
+        cmds.push(cmd(bp, x, cy + corridorW, z));
+      });
+    }
+    // Obstacles (alternating types)
+    const obstType = Math.floor(rand() * 4);
+    const ox = sx + segLen / 2;
+    if (obstType === 0) {
+      // Wall with gap
+      for (let y = cy - corridorW; y <= cy + corridorW; y += step) {
+        if (Math.abs(y - cy) > step * 1.5) {
+          extrudeZ(cz, wallH * 0.6, step, (z) => { cmds.push(cmd(bp, ox, y, z)); });
+        }
+      }
+    } else if (obstType === 1) {
+      // Low barrier to jump
+      for (let y = cy - corridorW; y <= cy + corridorW; y += step) {
+        cmds.push(cmd(bp, ox, y, cz + step));
+      }
+    } else if (obstType === 2) {
+      // Pillars to weave through
+      for (let j = 0; j < 3; j++) {
+        const py = cy + (j - 1) * step * 2.5;
+        extrudeZ(cz, wallH, step, (z) => { cmds.push(cmd(bp, ox, py, z)); });
+      }
+    }
+  }
+  return cmds;
+}
+
+function generateLavaRun(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const rand = seededRandom(cfg.seed ?? 33);
+  const platCount = 20;
+  // Start platform
+  rectPlatform(cx - r, cy, step * 3, step * 3, cz, step, bp, cmds);
+  // End platform
+  rectPlatform(cx + r, cy, step * 3, step * 3, cz, step, bp, cmds);
+  // Floating platforms with varying heights
+  for (let i = 0; i < platCount; i++) {
+    const t = (i + 1) / (platCount + 1);
+    const px = cx - r + t * r * 2;
+    const py = cy + (rand() - 0.5) * step * 10;
+    const pz = cz + (rand() - 0.5) * step * 4;
+    const size = step * (1 + Math.floor(rand() * 2));
+    rectPlatform(px, py, size, size, pz, step, bp, cmds);
+    // Some platforms get pillars
+    if (rand() > 0.6) {
+      cmds.push(cmd(bp, px, py, pz + step));
+      cmds.push(cmd(bp, px, py, pz + step * 2));
+    }
+  }
+  return cmds;
+}
+
 // ============================================================
 // MAIN GENERATOR DISPATCH
 // ============================================================
@@ -1285,6 +1535,10 @@ export function generateShape(preset: ShapeConfig, blueprint: string): string[] 
     case "Arch": cmds = generateArch(safeCfg, blueprint); break;
     case "Tunnel": cmds = generateTunnel(safeCfg, blueprint); break;
     case "Hex Platform": cmds = generateHexPlatform(safeCfg, blueprint); break;
+    case "Cone": cmds = generateCone(safeCfg, blueprint); break;
+    case "Cross": cmds = generateCross(safeCfg, blueprint); break;
+    case "Spiral Ramp": cmds = generateSpiralRamp(safeCfg, blueprint); break;
+    case "Obelisk": cmds = generateObelisk(safeCfg, blueprint); break;
     case "Colosseum": cmds = generateColosseum(safeCfg, blueprint); break;
     case "Sky Ring": cmds = generateSkyRing(safeCfg, blueprint); break;
     case "Tower Arena": cmds = generateTowerArena(safeCfg, blueprint); break;
@@ -1295,6 +1549,9 @@ export function generateShape(preset: ShapeConfig, blueprint: string): string[] 
     case "Bridge Arena": cmds = generateBridgeArena(safeCfg, blueprint); break;
     case "King of the Hill": cmds = generateKingOfTheHill(safeCfg, blueprint); break;
     case "Four-Corner Arena": cmds = generateFourCornerArena(safeCfg, blueprint); break;
+    case "Fortress": cmds = generateFortress(safeCfg, blueprint); break;
+    case "Amphitheater": cmds = generateAmphitheater(safeCfg, blueprint); break;
+    case "Watchtower Ring": cmds = generateWatchtowerRing(safeCfg, blueprint); break;
     case "Maze": cmds = generateMaze(safeCfg, blueprint); break;
     case "Obstacle Course": cmds = generateObstacleCourse(safeCfg, blueprint); break;
     case "Spiral Staircase": cmds = generateSpiralStaircase(safeCfg, blueprint); break;
@@ -1306,6 +1563,8 @@ export function generateShape(preset: ShapeConfig, blueprint: string): string[] 
     case "Capture Point Arena": cmds = generateCapturePointArena(safeCfg, blueprint); break;
     case "Boss Summon Platform": cmds = generateBossSummonPlatform(safeCfg, blueprint); break;
     case "Last Man Standing": cmds = generateLastManStanding(safeCfg, blueprint); break;
+    case "Gauntlet": cmds = generateGauntlet(safeCfg, blueprint); break;
+    case "Lava Run": cmds = generateLavaRun(safeCfg, blueprint); break;
     default: cmds = [];
   }
   return dedupeCommands(cmds).slice(0, MAX_COMMANDS);
