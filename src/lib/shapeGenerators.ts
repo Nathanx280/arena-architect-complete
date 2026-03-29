@@ -113,6 +113,8 @@ export const SHAPE_PRESETS: ShapeConfig[] = [
   { name: "Capture Point Arena", description: "3-point control map", icon: "🚩", category: "events", centerX: 5000, centerY: 5000, centerZ: 0, radius: 3000, step: 400 },
   { name: "Boss Summon Platform", description: "Ritual summoning platform", icon: "🐉", category: "events", centerX: 5000, centerY: 5000, centerZ: 0, radius: 2000, step: 350 },
   { name: "Last Man Standing", description: "Shrinking circle arena", icon: "⭕", category: "events", centerX: 5000, centerY: 5000, centerZ: 0, radius: 3000, step: 400 },
+  { name: "Gauntlet", description: "Linear gauntlet challenge run", icon: "🗡️", category: "events", centerX: 5000, centerY: 5000, centerZ: 0, radius: 4000, step: 400 },
+  { name: "Lava Run", description: "Floating platforms over void", icon: "🌋", category: "events", centerX: 5000, centerY: 5000, centerZ: 3000, radius: 3000, step: 350 },
 ];
 
 // ============================================================
