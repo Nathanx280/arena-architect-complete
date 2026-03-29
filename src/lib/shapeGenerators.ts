@@ -1355,6 +1355,165 @@ function generateLastManStanding(cfg: ShapeConfig, bp: string): string[] {
   return cmds;
 }
 
+function generateFortress(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const wallH = step * 6;
+  const halfW = r, halfD = r * 0.8;
+  // Outer walls
+  rectEdges(cx, cy, halfW, halfD, step, (x, y) => {
+    extrudeZ(cz, wallH, step, (z) => { cmds.push(cmd(bp, x, y, z)); });
+  });
+  // Corner towers (cylindrical)
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      const tx = cx + sx * halfW;
+      const ty = cy + sy * halfD;
+      const towerR = step * 2;
+      circleWall(tx, ty, towerR, cz, wallH + step * 3, step, bp, cmds);
+      circleFloor(tx, ty, towerR, cz + wallH + step * 3, step, bp, cmds);
+    }
+  }
+  // Floor
+  centeredRect(cx, cy, halfW, halfD, step, (x, y) => { cmds.push(cmd(bp, x, y, cz)); });
+  // Gate (front opening marker)
+  for (let z = cz; z <= cz + wallH * 0.7; z += step) {
+    cmds.push(cmd(bp, cx - step, cy - halfD, z));
+    cmds.push(cmd(bp, cx + step, cy - halfD, z));
+  }
+  // Inner keep
+  const keepR = r * 0.25;
+  circleWall(cx, cy, keepR, cz, wallH * 0.8, step, bp, cmds);
+  circleFloor(cx, cy, keepR, cz, step, bp, cmds);
+  return cmds;
+}
+
+function generateAmphitheater(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const tiers = 5;
+  const tierH = step * 2;
+  // Half-circle seating tiers
+  for (let t = 0; t < tiers; t++) {
+    const tierR = r * 0.5 + t * step * 3;
+    const tierZ = cz + t * tierH;
+    for (let angle = 0; angle <= Math.PI; angle += step / tierR) {
+      const x = cx + Math.cos(angle) * tierR;
+      const y = cy + Math.sin(angle) * tierR;
+      cmds.push(cmd(bp, x, y, tierZ));
+      // Back wall
+      if (t === tiers - 1) {
+        for (let z = tierZ; z <= tierZ + step * 3; z += step)
+          cmds.push(cmd(bp, x, y, z));
+      }
+    }
+  }
+  // Stage floor
+  circleFloor(cx, cy, r * 0.4, cz, step, bp, cmds);
+  // Stage back wall (flat side)
+  for (let x = cx - r * 0.4; x <= cx + r * 0.4; x += step) {
+    extrudeZ(cz, step * 5, step, (z) => { cmds.push(cmd(bp, x, cy, z)); });
+  }
+  return cmds;
+}
+
+function generateWatchtowerRing(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const towerCount = 6;
+  const towerR = step * 2;
+  const towerH = step * 10;
+  // Central platform
+  circleFloor(cx, cy, r * 0.3, cz, step, bp, cmds);
+  // Ring of towers
+  for (let i = 0; i < towerCount; i++) {
+    const angle = (i * Math.PI * 2) / towerCount;
+    const tx = cx + Math.cos(angle) * r;
+    const ty = cy + Math.sin(angle) * r;
+    // Tower body
+    circleWall(tx, ty, towerR, cz, towerH, step, bp, cmds);
+    // Tower floor at top
+    circleFloor(tx, ty, towerR, cz + towerH, step, bp, cmds);
+    // Connecting walkway to center
+    rampSegment(cx + Math.cos(angle) * r * 0.3, cy + Math.sin(angle) * r * 0.3, cz,
+                tx, ty, cz, step, step, bp, cmds);
+  }
+  return cmds;
+}
+
+function generateGauntlet(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: length, step } = cfg;
+  const cmds: string[] = [];
+  const rand = seededRandom(cfg.seed ?? 55);
+  const corridorW = step * 4;
+  const wallH = step * 4;
+  const segments = 10;
+  // Long corridor
+  for (let i = 0; i < segments; i++) {
+    const t = i / segments;
+    const sx = cx - length / 2 + t * length;
+    const segLen = length / segments;
+    // Floor
+    rectPlatform(sx + segLen / 2, cy, segLen / 2, corridorW, cz, step, bp, cmds);
+    // Walls
+    for (let x = sx; x <= sx + segLen; x += step) {
+      extrudeZ(cz, wallH, step, (z) => {
+        cmds.push(cmd(bp, x, cy - corridorW, z));
+        cmds.push(cmd(bp, x, cy + corridorW, z));
+      });
+    }
+    // Obstacles (alternating types)
+    const obstType = Math.floor(rand() * 4);
+    const ox = sx + segLen / 2;
+    if (obstType === 0) {
+      // Wall with gap
+      for (let y = cy - corridorW; y <= cy + corridorW; y += step) {
+        if (Math.abs(y - cy) > step * 1.5) {
+          extrudeZ(cz, wallH * 0.6, step, (z) => { cmds.push(cmd(bp, ox, y, z)); });
+        }
+      }
+    } else if (obstType === 1) {
+      // Low barrier to jump
+      for (let y = cy - corridorW; y <= cy + corridorW; y += step) {
+        cmds.push(cmd(bp, ox, y, cz + step));
+      }
+    } else if (obstType === 2) {
+      // Pillars to weave through
+      for (let j = 0; j < 3; j++) {
+        const py = cy + (j - 1) * step * 2.5;
+        extrudeZ(cz, wallH, step, (z) => { cmds.push(cmd(bp, ox, py, z)); });
+      }
+    }
+  }
+  return cmds;
+}
+
+function generateLavaRun(cfg: ShapeConfig, bp: string): string[] {
+  const { centerX: cx, centerY: cy, centerZ: cz, radius: r, step } = cfg;
+  const cmds: string[] = [];
+  const rand = seededRandom(cfg.seed ?? 33);
+  const platCount = 20;
+  // Start platform
+  rectPlatform(cx - r, cy, step * 3, step * 3, cz, step, bp, cmds);
+  // End platform
+  rectPlatform(cx + r, cy, step * 3, step * 3, cz, step, bp, cmds);
+  // Floating platforms with varying heights
+  for (let i = 0; i < platCount; i++) {
+    const t = (i + 1) / (platCount + 1);
+    const px = cx - r + t * r * 2;
+    const py = cy + (rand() - 0.5) * step * 10;
+    const pz = cz + (rand() - 0.5) * step * 4;
+    const size = step * (1 + Math.floor(rand() * 2));
+    rectPlatform(px, py, size, size, pz, step, bp, cmds);
+    // Some platforms get pillars
+    if (rand() > 0.6) {
+      cmds.push(cmd(bp, px, py, pz + step));
+      cmds.push(cmd(bp, px, py, pz + step * 2));
+    }
+  }
+  return cmds;
+}
+
 // ============================================================
 // MAIN GENERATOR DISPATCH
 // ============================================================
@@ -1376,6 +1535,10 @@ export function generateShape(preset: ShapeConfig, blueprint: string): string[] 
     case "Arch": cmds = generateArch(safeCfg, blueprint); break;
     case "Tunnel": cmds = generateTunnel(safeCfg, blueprint); break;
     case "Hex Platform": cmds = generateHexPlatform(safeCfg, blueprint); break;
+    case "Cone": cmds = generateCone(safeCfg, blueprint); break;
+    case "Cross": cmds = generateCross(safeCfg, blueprint); break;
+    case "Spiral Ramp": cmds = generateSpiralRamp(safeCfg, blueprint); break;
+    case "Obelisk": cmds = generateObelisk(safeCfg, blueprint); break;
     case "Colosseum": cmds = generateColosseum(safeCfg, blueprint); break;
     case "Sky Ring": cmds = generateSkyRing(safeCfg, blueprint); break;
     case "Tower Arena": cmds = generateTowerArena(safeCfg, blueprint); break;
@@ -1386,6 +1549,9 @@ export function generateShape(preset: ShapeConfig, blueprint: string): string[] 
     case "Bridge Arena": cmds = generateBridgeArena(safeCfg, blueprint); break;
     case "King of the Hill": cmds = generateKingOfTheHill(safeCfg, blueprint); break;
     case "Four-Corner Arena": cmds = generateFourCornerArena(safeCfg, blueprint); break;
+    case "Fortress": cmds = generateFortress(safeCfg, blueprint); break;
+    case "Amphitheater": cmds = generateAmphitheater(safeCfg, blueprint); break;
+    case "Watchtower Ring": cmds = generateWatchtowerRing(safeCfg, blueprint); break;
     case "Maze": cmds = generateMaze(safeCfg, blueprint); break;
     case "Obstacle Course": cmds = generateObstacleCourse(safeCfg, blueprint); break;
     case "Spiral Staircase": cmds = generateSpiralStaircase(safeCfg, blueprint); break;
@@ -1397,6 +1563,8 @@ export function generateShape(preset: ShapeConfig, blueprint: string): string[] 
     case "Capture Point Arena": cmds = generateCapturePointArena(safeCfg, blueprint); break;
     case "Boss Summon Platform": cmds = generateBossSummonPlatform(safeCfg, blueprint); break;
     case "Last Man Standing": cmds = generateLastManStanding(safeCfg, blueprint); break;
+    case "Gauntlet": cmds = generateGauntlet(safeCfg, blueprint); break;
+    case "Lava Run": cmds = generateLavaRun(safeCfg, blueprint); break;
     default: cmds = [];
   }
   return dedupeCommands(cmds).slice(0, MAX_COMMANDS);
